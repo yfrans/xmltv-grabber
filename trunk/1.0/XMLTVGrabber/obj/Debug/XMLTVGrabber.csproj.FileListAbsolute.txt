@@ -1,0 +1,7 @@
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\XMLTVGrabber\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\XMLTVGrabber\bin\Debug\XMLTVGrabber.dll
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\XMLTVGrabber\bin\Debug\XMLTVGrabber.pdb
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\XMLTVGrabber\obj\Debug\XMLTVGrabber.dll
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\XMLTVGrabber\obj\Debug\XMLTVGrabber.pdb
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\bin\debug\XMLTVGrabber.dll
+C:\Users\Yossi\Documents\Visual Studio 2010\Projects\XMLTVGrabber\bin\debug\XMLTVGrabber.pdb

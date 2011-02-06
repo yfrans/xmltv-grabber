@@ -1,0 +1,260 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Net;
+using System.Text.RegularExpressions;
+using System.Drawing;
+using System.Threading;
+using System.Xml;
+using System.IO;
+
+namespace XMLTVGrabber
+{
+	public class PAction
+	{
+		private const int MAX_THREADS = 3;
+
+		public delegate void UILog();
+		private PData _data;
+		private Logger _logger;
+		private int _runningThreads;
+
+		public PAction(PData dataInstance, Logger logger)
+		{
+			_data = dataInstance;
+			_runningThreads = 0;
+			_logger = logger;
+		}
+
+		private delegate void GetChannelDelegate(int id);
+		private void GetChannel(int id)
+		{
+			string resText;
+			if (Common.Get("http://www.ynet.co.il/home/0,7340,L-1422,00.html", out resText,
+				"hdnSearchType=0",
+				"hdnDurationTime=1440",
+				"lstChannels=",
+				"lstFields=" + id.ToString(),
+				"lstDate=",
+				"lstTime=",
+				"lstPackages=",
+				"txtSearchStr=")) {
+				Regex channelsRgx = new Regex(@"<tr[^>]*?><td[^>]*?><a[^>]*?href=\""[^""]*?lstChannels.value='(?<id>.*?)'[^""]*?\""[^>]*?class='index'><b>(?<name>.*?)</.*?<img\ssrc='(?<icon>.*?)'[^>]*?>", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+				foreach (Match channel in channelsRgx.Matches(resText)) {
+					int channelId;
+					string channelName = channel.Groups["name"].Value;
+					string iconSrc = channel.Groups["icon"].Value;
+					if (int.TryParse(channel.Groups["id"].Value, out channelId)) {
+						_data.AddChannel(channelId,
+							new Channel() {
+								Category = "",
+								Id = channelId,
+								Name = channelName,
+								Icon = GetIcon(iconSrc)
+							}
+						);
+					}
+				}
+			} else {
+				_logger.LogError("GetChannel: id = " + id);
+			}
+		}
+
+		public bool CreateXMLTV(string filename)
+		{
+			_logger.LogInfo("Starting XML builder");
+			XMLTVBuilder builder = new XMLTVBuilder(_data, this, _logger);
+			XmlDocument doc = builder.Build(3);
+			if (File.Exists(filename)) {
+				_logger.LogWarning("XMLTV file already exist, deleting exiting file");
+				File.Delete(filename);
+			}
+			_logger.LogInfo("Saving XMLTV file as " + filename);
+			doc.Save(filename);
+			return true;
+		}
+
+		private void GetChannelCallback(IAsyncResult iar)
+		{
+			_runningThreads--;
+		}
+
+		private string GetIcon(string src)
+		{
+			string fileName = src.Substring(src.LastIndexOf('/') + 1);
+			if (!fileName.Equals("ws.gif")) {
+				HttpWebRequest req = (HttpWebRequest)WebRequest.Create("http://www.ynet.co.il" + src);
+				HttpWebResponse res = (HttpWebResponse)req.GetResponse();
+				Image img = Image.FromStream(res.GetResponseStream());
+				if (!_data.SaveIcon(img, fileName))
+					fileName = "";
+			} else {
+				fileName = "";
+			}
+			return fileName;
+		}
+
+		public void UpdateChannels()
+		{
+			List<int> checkedChannelsIds = new List<int>();
+			foreach (Channel c in _data.CheckedChannels)
+				checkedChannelsIds.Add(c.Id);
+
+			_data.Clear();
+
+			List<int> categories = new List<int>();
+			string resText;
+			if (Common.Get("http://www.ynet.co.il/home/0,7340,L-1422,00.html", out resText)) {
+				Regex selectRgx = new Regex(@"<select\sname=lstFields[^>]*?>(?<options>.*?)</select>", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+				Match select = selectRgx.Match(resText);
+				if (select != null) {
+					Regex optionsRgx = new Regex(@"<option\svalue='(?<value>.*?)'[^>]*?>(?<text>[^<]*)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+					foreach (Match m in optionsRgx.Matches(select.Value)) {
+						int tmp;
+						if (int.TryParse(m.Groups["value"].Value, out tmp))
+							categories.Add(tmp);
+					}
+				}
+			}
+
+			GetChannelDelegate gcdlg = new GetChannelDelegate(GetChannel);
+			foreach (int cat in categories) {
+				WaitForAvailableThread();
+				_runningThreads++;
+				gcdlg.BeginInvoke(cat, GetChannelCallback, null);
+			}
+			while (_runningThreads > 0)
+				Thread.Sleep(300);
+
+			foreach (int id in checkedChannelsIds)
+				_data.Check(id);
+
+			_data.Save();
+		}
+
+		private void WaitForAvailableThread()
+		{
+			while (_runningThreads >= MAX_THREADS)
+				Thread.Sleep(500);
+		}
+
+		public void UpdatePrograms(Channel ch, int days) { UpdatePrograms(ch, days, true); }
+		public void UpdatePrograms(Channel ch, int days, bool save)
+		{
+			_logger.LogInfo("Updating programs for channel: " + ch.Name + ", " + days + " days");
+			
+			ch.Programs.Clear();
+			for (int i = 0; i < days; i++) {
+				string date = DateTime.Now.AddDays(i).ToShortDateString();
+				_logger.LogInfo("Channel: " + ch.Name + ", Date: " + date);
+				string resText;
+				if (Common.Get("http://www.ynet.co.il/home/0,7340,L-1422,00.html", out resText,
+					"hdnSearchType=0",
+					"hdnDurationTime=1440",
+					"lstChannels=" + ch.Id,
+					"lstFields=",
+					"lstDate=" + date,
+					"lstTime=",
+					"lstPackages=",
+					"txtSearchStr=")) {
+					Regex rgx = new Regex(@"<tr[^>]*?><td[^>]*?><a[^>]*?href=\""[^""]*?\('(?<url>.*?)\'\,[^""]*?\""[^>]*?class=smallheader>(?<name>.*?)</", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+					MatchCollection mc = rgx.Matches(resText);
+					_logger.LogInfo("Processing " + mc.Count + " programs for channel " + ch.Name);
+					foreach (Match m in mc) {
+						TvProgram tvp = GetProgramDetails("http://www.ynet.co.il" + m.Groups["url"].Value);
+						if (tvp != null) {
+							ch.Programs.Add(tvp);
+						} else {
+							_logger.LogError("Can't get program details for " + m.Groups["url"].Value);
+						}
+					}
+				}
+			}
+			if (save)
+				_data.Save();
+		}
+
+		public void UpdatePrograms(int days)
+		{
+			foreach (Channel ch in _data.CheckedChannels)
+				UpdatePrograms(ch, days, false);
+			_data.Save();
+		}
+
+		public TvProgram GetProgramDetails(string url)
+		{
+			TvProgram ret = null;
+			string resText;
+			if (Common.Get(url, out resText)) {
+				Regex rgx = new Regex(@"<b>(?<type>.*?)</b>(?:&nbsp;)(?<value>[^<>]*?)(?:&nbsp;[^<]*?)*<", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+				MatchCollection mc = rgx.Matches(resText);
+				if (mc.Count >= 5) {
+					DateTime start;
+					DateTime end;
+					string dateStr = mc[2].Groups["value"].Value + " " + mc[3].Groups["value"].Value;
+					if (DateTime.TryParse(dateStr, out start)) {
+						int duration;
+						if (int.TryParse(mc[4].Groups["value"].Value, out duration)) {
+							end = start.AddMinutes(duration);
+							ret = new TvProgram() {
+								Start = start,
+								End = end
+							};
+						}
+					}
+				} else {
+					rgx = new Regex(@".replace\('(?<ref>.*?)'", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+					Match m = rgx.Match(resText);
+					if (m != null)
+						return GetProgramDetails("http://www.ynet.co.il" + m.Groups["ref"].Value);
+					else
+						return ret;
+				}
+				if (ret != null) {
+					rgx = new Regex(@"<td[^>]+?><font\sclass=text18><b>(?<title>.*?)</", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+					Match m = rgx.Match(resText);
+					if (m != null) {
+						string title = m.Groups["title"].Value;
+						int epIndex = title.IndexOf("פרק");
+						if (epIndex > -1) {
+							string[] split = title.Split('-');
+							title = "";
+							for (int i = 0; i < split.Length - 1; i++)
+								title += split[i];
+							string episode = split[split.Length - 1];
+							title = title.Trim();
+							episode = episode.Trim();
+
+							StringBuilder seassonNumStr = new StringBuilder();
+							int j = title.Length - 1;
+							while (j > 0 && Char.IsDigit(title[j]))
+								seassonNumStr.Insert(0, title[j--]);
+
+							StringBuilder episodeNumStr = new StringBuilder();
+							j = episode.Length - 1;
+							while (j > 0 && Char.IsDigit(episode[j]))
+								episodeNumStr.Insert(0, episode[j--]);
+
+							int seassonNum, episodeNum;
+							if (int.TryParse(seassonNumStr.ToString(), out seassonNum) &&
+								int.TryParse(episodeNumStr.ToString(), out episodeNum)) {
+								ret.Series = new SeriesDetail() {
+									EpisodeNumber = episodeNum,
+									SeassonNumber = seassonNum
+								};
+							}
+						}
+						ret.Name = title;
+					}
+					rgx = new Regex(@"<td[^>]+?>[^<>]*?<font\sclass=text12>(?<desc>.*?)</", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+					m = rgx.Match(resText);
+					if (m != null) {
+						ret.Description = m.Groups["desc"].Value.Trim();
+					}
+				}
+			}
+			return ret;
+		}
+	}
+}
