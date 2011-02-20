@@ -1,23 +1,23 @@
 == XMLTVGrabber Readme ==
 ----
 === Available arguments: ===
-XMLTVGrabberWin.exe [show_window] [# of days] [output file]<br>
+XMLTVGrabberWin.exe `[show_window] [# of days] [output file]`<br>
 <br>
 _Default `#` of days: 1_<br>
 _Default output file: What you set in the program GUI_<br>
 <br>
 === Example: ===
-*Default # of days, default output file:*<br>
+*Default `#` of days, default output file:*<br>
 XMLTVGrabberWin.exe false<br>
 <br>
 *5 days, default output file:*<br>
 XMLTVGrabberWin.exe false 5<br>
 <br>
-*default # of days, custom output file:*<br>
-XMLTVGrabberWin.exe false "C:\MyGuide.xml"<br>
+*default `#` of days, custom output file:*<br>
+XMLTVGrabberWin.exe false `"C:\MyGuide.xml"`<br>
 <br>
 *5 days, custom output file:*<br>
-XMLTVGrabberWin.exe false 5 "C:\MyGuide.xml"<br>
+XMLTVGrabberWin.exe false 5 `"C:\MyGuide.xml"`<br>
 <br><br>
 Bugs, comments etc. - yfrans@gmail.com
 <br>
