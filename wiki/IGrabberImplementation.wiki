@@ -18,4 +18,4 @@ GetChannels is used to get the updated channel list from the website used to scr
 
 GetPrograms is used to get the programs for a specific date. The args is the arguments you set when you returned the channels list.
 
-LogMessage event is used to show the messaged in the log window and the log file. OnLogEvtArgs contains the log message and the message type (Info, Warning, Error, Debug).
+LogMessage event is used to show the message in the log window and the log file. OnLogEvtArgs contains the log message and the message type (Info, Warning, Error, Debug).
